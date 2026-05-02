@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npm test *)",
       "Bash(codeloom analyze *)",
-      "Bash(codeloom execute *)"
+      "Bash(codeloom execute *)",
+      "Bash(vsce package *)"
     ]
   }
 }

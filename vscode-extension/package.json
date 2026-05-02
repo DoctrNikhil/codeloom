@@ -4,8 +4,17 @@
   "description": "Turn AI-generated diffs into atomic, traceable, MBD-aligned git commits",
   "version": "0.2.0",
   "publisher": "codeloom",
+  "license": "MIT",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["SCM Providers", "Other"],
+  "keywords": ["git", "commits", "diff", "atomic", "MBD", "traceability", "ai-generated-code"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/codeloom/codeloom"
+  },
+  "bugs": {
+    "url": "https://github.com/codeloom/codeloom/issues"
+  },
   "main": "./out/extension.js",
   "activationEvents": ["onStartupFinished"],
   "contributes": {
@@ -43,7 +52,6 @@
     "watch": "tsc -watch -p ./"
   },
   "dependencies": {
-    "codeloom": "file:../codeloom",
     "simple-git": "^3.22.0"
   },
   "devDependencies": {
