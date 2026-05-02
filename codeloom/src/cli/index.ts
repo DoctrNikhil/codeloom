@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
 import chalk from 'chalk';
+import { simpleGit } from 'simple-git';
 import { Analyzer } from '../analyzer/analyzer';
 import { ManifestParser } from '../mbd/manifest-parser';
 import { OutputFormatter } from './formatter';
@@ -18,14 +19,16 @@ program
 program
   .command('analyze')
   .description('Analyze a diff and produce an atomic commit plan')
-  .argument('[diffFile]', 'Path to a unified diff file (or use --stdin)')
+  .argument('[diffFile]', 'Path to a unified diff file (or use --stdin / --staged)')
   .option('--stdin', 'Read diff from stdin')
+  .option('--staged', 'Read diff from currently staged changes (git diff --cached)')
+  .option('-C, --cwd <path>', 'Repository to read --staged from (default: cwd)')
   .option('-m, --manifest <path>', 'Path to MBD manifest YAML for traceability')
   .option('-j, --json', 'Output as JSON instead of formatted text')
   .option('--no-fail', 'Always exit 0 even if critical risks detected')
   .action(async (diffFile, options) => {
     try {
-      const diffText = await readDiff(diffFile, options.stdin);
+      const diffText = await readDiff(diffFile, options.stdin, options.staged, options.cwd);
       const result = runAnalysis(diffText, options.manifest);
       const formatter = new OutputFormatter();
       if (options.json) { console.log(formatter.formatJson(result)); }
@@ -42,8 +45,9 @@ program
 program
   .command('execute')
   .description('Apply the commit plan as real git commits (V0.2)')
-  .argument('[diffFile]', 'Path to a unified diff file (or use --stdin)')
+  .argument('[diffFile]', 'Path to a unified diff file (or use --stdin / --staged)')
   .option('--stdin', 'Read diff from stdin')
+  .option('--staged', 'Read diff from staged changes and split them into atomic commits')
   .option('-m, --manifest <path>', 'Path to MBD manifest YAML for traceability')
   .option('-C, --cwd <path>', 'Path to the git repository (default: cwd)')
   .option('-b, --branch <name>', 'Create or switch to this branch before committing')
@@ -54,7 +58,7 @@ program
   .option('-j, --json', 'Output execution result as JSON')
   .action(async (diffFile, options) => {
     try {
-      const diffText = await readDiff(diffFile, options.stdin);
+      const diffText = await readDiff(diffFile, options.stdin, options.staged, options.cwd);
       const analysis = runAnalysis(diffText, options.manifest);
       const executor = new GitExecutor({
         cwd: options.cwd ? path.resolve(options.cwd) : process.cwd(),
@@ -63,7 +67,9 @@ program
       const execResult = await executor.execute(analysis, {
         dryRun: options.dryRun,
         branch: options.branch,
-        allowDirty: options.allowDirty,
+        // --staged implies the staged files are "expected" — they ARE the plan.
+        allowDirty: options.allowDirty || options.staged,
+        unstageFirst: options.staged,
         noRollback: options.rollback === false,
         verbose: options.verbose,
       });
@@ -81,11 +87,19 @@ program
 program
   .command('trace')
   .description('Show the traceability matrix between requirements and code')
-  .requiredOption('-d, --diff <path>', 'Path to diff file')
+  .option('-d, --diff <path>', 'Path to diff file')
+  .option('--staged', 'Use staged changes instead of a diff file')
+  .option('-C, --cwd <path>', 'Repository to read --staged from (default: cwd)')
   .requiredOption('-m, --manifest <path>', 'Path to MBD manifest YAML')
   .action(async (options) => {
     try {
-      const diffText = fs.readFileSync(options.diff, 'utf-8');
+      if (!options.diff && !options.staged) {
+        console.error(chalk.red('Error: provide --diff <path> or --staged'));
+        process.exit(1);
+      }
+      const diffText = options.staged
+        ? await readStagedDiff(options.cwd ? path.resolve(options.cwd) : process.cwd())
+        : fs.readFileSync(options.diff, 'utf-8');
       const manifest = new ManifestParser().loadFromFile(options.manifest);
       const result = new Analyzer().analyze(diffText, { manifest });
       console.log(chalk.bold.cyan('\n--- Traceability Matrix ---\n'));
@@ -107,11 +121,35 @@ program
     }
   });
 
-async function readDiff(diffFile: string | undefined, useStdin: boolean): Promise<string> {
+async function readDiff(
+  diffFile: string | undefined,
+  useStdin: boolean,
+  useStaged?: boolean,
+  cwd?: string
+): Promise<string> {
+  if (useStaged) return readStagedDiff(cwd ? path.resolve(cwd) : process.cwd());
   if (useStdin) return readStdin();
-  if (!diffFile) { console.error(chalk.red('Error: provide either a diff file path or --stdin')); process.exit(1); }
+  if (!diffFile) {
+    console.error(chalk.red('Error: provide a diff file path, --stdin, or --staged'));
+    process.exit(1);
+  }
   if (!fs.existsSync(diffFile)) { console.error(chalk.red(`Error: diff file not found: ${diffFile}`)); process.exit(1); }
   return fs.readFileSync(diffFile, 'utf-8');
+}
+
+async function readStagedDiff(cwd: string): Promise<string> {
+  const git = simpleGit(cwd);
+  const isRepo = await git.checkIsRepo().catch(() => false);
+  if (!isRepo) {
+    console.error(chalk.red(`Error: not a git repository: ${cwd}`));
+    process.exit(1);
+  }
+  const diff = await git.diff(['--cached']);
+  if (!diff.trim()) {
+    console.error(chalk.red('Error: no staged changes (run `git add` first)'));
+    process.exit(1);
+  }
+  return diff;
 }
 
 function runAnalysis(diffText: string, manifestPath: string | undefined) {
