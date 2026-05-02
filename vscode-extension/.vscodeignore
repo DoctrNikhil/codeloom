@@ -1,9 +1,34 @@
-.vscode/**
-.vscode-test/**
-src/**
-.gitignore
-**/tsconfig.json
-**/*.map
-**/*.ts
-node_modules/codeloom/src/**
-node_modules/codeloom/tests/**
+# Whitelist approach: include only compiled output
+**/*
+!out
+!out/**
+!package.json
+!README.md
+!CHANGELOG.md
+!LICENSE
+!node_modules
+!node_modules/codeloom
+!node_modules/codeloom/dist
+!node_modules/codeloom/dist/**
+!node_modules/simple-git
+!node_modules/simple-git/**
+
+# Exclude everything else in node_modules
+node_modules/*
+!node_modules/codeloom
+!node_modules/simple-git
+
+# Exclude source files and build artifacts
+node_modules/codeloom/src
+node_modules/codeloom/out
+node_modules/codeloom/node_modules
+node_modules/codeloom/.git
+node_modules/codeloom/.gitignore
+node_modules/codeloom/*.ts
+node_modules/codeloom/*.js.map
+../
+*.ts
+src/
+.git
+.vscode
+test/
