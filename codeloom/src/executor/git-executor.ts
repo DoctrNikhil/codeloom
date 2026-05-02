@@ -154,7 +154,7 @@ export class GitExecutor {
     const fs = await import('fs');
     const abs = path.resolve(this.cwd, filePath);
     if (fs.existsSync(abs)) {
-      await this.git.add(filePath);
+      await this.git.add(['-f', filePath]);
     } else {
       try { await this.git.rm(filePath); } catch { /* already removed */ }
     }
