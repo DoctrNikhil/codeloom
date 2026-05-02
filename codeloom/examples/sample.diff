@@ -1,0 +1,163 @@
+diff --git a/src/types/user.ts b/src/types/user.ts
+new file mode 100644
+--- /dev/null
++++ b/src/types/user.ts
+@@ -0,0 +1,12 @@
++export interface User {
++  id: string;
++  email: string;
++  username: string;
++  passwordHash: string;
++  createdAt: Date;
++  updatedAt: Date;
++}
++
++export interface LoginCredentials {
++  email: string;
++  password: string;
++}
+diff --git a/src/auth/hash.ts b/src/auth/hash.ts
+new file mode 100644
+--- /dev/null
++++ b/src/auth/hash.ts
+@@ -0,0 +1,16 @@
++import bcrypt from 'bcrypt';
++
++const SALT_ROUNDS = 12;
++
++export async function hashPassword(password: string): Promise<string> {
++  if (!password || password.length < 8) {
++    throw new Error('Password must be at least 8 characters');
++  }
++  return bcrypt.hash(password, SALT_ROUNDS);
++}
++
++export async function verifyPassword(
++  password: string,
++  hash: string
++): Promise<boolean> {
++  return bcrypt.compare(password, hash);
++}
+diff --git a/src/auth/jwt.ts b/src/auth/jwt.ts
+new file mode 100644
+--- /dev/null
++++ b/src/auth/jwt.ts
+@@ -0,0 +1,18 @@
++import jwt from 'jsonwebtoken';
++import { User } from '../types/user';
++
++const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret-change-in-prod';
++const JWT_EXPIRY = '24h';
++
++export function generateToken(user: User): string {
++  return jwt.sign(
++    { userId: user.id, email: user.email },
++    JWT_SECRET,
++    { expiresIn: JWT_EXPIRY }
++  );
++}
++
++export function verifyToken(token: string): { userId: string; email: string } {
++  return jwt.verify(token, JWT_SECRET) as { userId: string; email: string };
++}
+diff --git a/src/auth/rate-limiter.ts b/src/auth/rate-limiter.ts
+new file mode 100644
+--- /dev/null
++++ b/src/auth/rate-limiter.ts
+@@ -0,0 +1,20 @@
++const attemptMap = new Map<string, { count: number; resetAt: number }>();
++
++const MAX_ATTEMPTS = 5;
++const WINDOW_MS = 15 * 60 * 1000; // 15 minutes
++
++export function checkRateLimit(email: string): void {
++  const now = Date.now();
++  const record = attemptMap.get(email);
++
++  if (record && now < record.resetAt) {
++    if (record.count >= MAX_ATTEMPTS) {
++      throw new Error(`Too many login attempts. Try again after ${new Date(record.resetAt).toISOString()}`);
++    }
++    record.count++;
++  } else {
++    attemptMap.set(email, { count: 1, resetAt: now + WINDOW_MS });
++  }
++}
++
++export function clearRateLimit(email: string): void {
++  attemptMap.delete(email);
++}
+diff --git a/src/endpoints/login.ts b/src/endpoints/login.ts
+new file mode 100644
+--- /dev/null
++++ b/src/endpoints/login.ts
+@@ -0,0 +1,24 @@
++import { LoginCredentials, User } from '../types/user';
++import { verifyPassword } from '../auth/hash';
++import { generateToken } from '../auth/jwt';
++import { checkRateLimit, clearRateLimit } from '../auth/rate-limiter';
++
++export async function loginUser(
++  credentials: LoginCredentials,
++  findUser: (email: string) => Promise<User | null>
++): Promise<{ token: string; user: User }> {
++  checkRateLimit(credentials.email);
++
++  const user = await findUser(credentials.email);
++  if (!user) {
++    throw new Error('Invalid email or password');
++  }
++
++  const valid = await verifyPassword(credentials.password, user.passwordHash);
++  if (!valid) {
++    throw new Error('Invalid email or password');
++  }
++
++  clearRateLimit(credentials.email);
++  const token = generateToken(user);
++  return { token, user };
++}
+diff --git a/tests/auth.test.ts b/tests/auth.test.ts
+new file mode 100644
+--- /dev/null
++++ b/tests/auth.test.ts
+@@ -0,0 +1,30 @@
++import { hashPassword, verifyPassword } from '../src/auth/hash';
++import { generateToken, verifyToken } from '../src/auth/jwt';
++import { loginUser } from '../src/endpoints/login';
++
++describe('password hashing', () => {
++  it('hashes a password', async () => {
++    const hash = await hashPassword('my-secure-password');
++    expect(hash).not.toBe('my-secure-password');
++    expect(hash.startsWith('$2b$')).toBe(true);
++  });
++
++  it('verifies correct password', async () => {
++    const hash = await hashPassword('my-secure-password');
++    const valid = await verifyPassword('my-secure-password', hash);
++    expect(valid).toBe(true);
++  });
++});
++
++describe('JWT generation', () => {
++  it('generates and verifies a token', () => {
++    const fakeUser = { id: '123', email: 'a@b.com', username: 'ab', passwordHash: '', createdAt: new Date(), updatedAt: new Date() };
++    const token = generateToken(fakeUser);
++    const payload = verifyToken(token);
++    expect(payload.userId).toBe('123');
++    expect(payload.email).toBe('a@b.com');
++  });
++});
+diff --git a/README.md b/README.md
+--- a/README.md
++++ b/README.md
+@@ -1,3 +1,7 @@
+ # Auth Service
++
++## Implemented
++
++- Password hashing (bcrypt, 12 rounds)
++- JWT token generation and verification
++- Rate limiting (5 attempts / 15 min)
++- Login endpoint with full validation

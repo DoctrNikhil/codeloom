@@ -1,0 +1,75 @@
+version: "1"
+project: auth-service
+description: Authentication service requirements
+
+requirements:
+  - id: REQ-001
+    title: Password hashing with bcrypt
+    description: All user passwords must be hashed using bcrypt before storage
+    category: security
+    priority: high
+    keywords: [bcrypt, hash, password, salt, rounds]
+    expectedFiles:
+      - src/auth/**
+      - src/types/**
+
+  - id: REQ-002
+    title: Login endpoint with rate limiting
+    description: Login endpoint must enforce rate limiting to prevent brute force
+    category: security
+    priority: high
+    keywords: [login, rate, limit, throttle, attempt]
+    expectedFiles:
+      - src/endpoints/**
+      - src/auth/**
+
+  - id: REQ-003
+    title: User data model
+    description: User model with required fields for authentication
+    category: feature
+    priority: medium
+    keywords: [user, model, interface, email, username]
+    expectedFiles:
+      - src/types/**
+
+  - id: REQ-004
+    title: JWT token generation
+    description: Generate signed JWT tokens on successful authentication
+    category: security
+    priority: high
+    keywords: [jwt, token, sign, verify, payload, expiry]
+    expectedFiles:
+      - src/auth/**
+
+  - id: REQ-005
+    title: Integration tests for auth flow
+    description: End-to-end tests covering login, hashing, and token generation
+    category: test
+    priority: medium
+    keywords: [test, describe, it, expect, auth, login]
+    expectedFiles:
+      - tests/**
+
+stateMachines:
+  - name: AuthFlow
+    states:
+      - ANONYMOUS
+      - AUTHENTICATING
+      - AUTHENTICATED
+      - FAILED
+    transitions:
+      - from: ANONYMOUS
+        to: AUTHENTICATING
+        trigger: login_attempt
+        requirementId: REQ-002
+      - from: AUTHENTICATING
+        to: AUTHENTICATED
+        trigger: credentials_valid
+        requirementId: REQ-001
+      - from: AUTHENTICATING
+        to: FAILED
+        trigger: credentials_invalid
+        requirementId: REQ-002
+      - from: FAILED
+        to: ANONYMOUS
+        trigger: reset

@@ -1,0 +1,46 @@
+{
+  "name": "codeloom",
+  "version": "0.2.0",
+  "description": "Architectural linker for AI-generated code: turns chaotic diffs into atomic, traceable commits with Model-Based Development integration",
+  "main": "dist/index.js",
+  "bin": {
+    "codeloom": "dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/cli/index.ts",
+    "start": "node dist/cli/index.js",
+    "test": "jest",
+    "test:integration": "jest --testPathPattern=integration --runInBand",
+    "test:unit": "jest --testPathIgnorePatterns=integration",
+    "demo": "ts-node src/cli/index.ts analyze examples/sample.diff --manifest examples/manifest.yaml",
+    "demo:execute": "ts-node src/cli/index.ts execute examples/sample.diff --manifest examples/manifest.yaml --dry-run"
+  },
+  "keywords": ["git", "ai", "atomic-commits", "mbd", "model-based-development", "code-review"],
+  "author": "CodeLoom Team",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
+    "js-yaml": "^4.1.0",
+    "simple-git": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.12",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.10.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.1.2",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "jest": {
+    "preset": "ts-jest",
+    "testEnvironment": "node",
+    "testMatch": ["<rootDir>/tests/**/*.test.ts"],
+    "moduleFileExtensions": ["ts", "js", "json"],
+    "transform": {
+      "^.+\\.ts$": ["ts-jest", { "tsconfig": "tsconfig.json" }]
+    }
+  }
+}

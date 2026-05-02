@@ -1,0 +1,54 @@
+{
+  "name": "codeloom-vscode",
+  "displayName": "CodeLoom",
+  "description": "Turn AI-generated diffs into atomic, traceable, MBD-aligned git commits",
+  "version": "0.2.0",
+  "publisher": "codeloom",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["SCM Providers", "Other"],
+  "main": "./out/extension.js",
+  "activationEvents": ["onStartupFinished"],
+  "contributes": {
+    "commands": [
+      { "command": "codeloom.analyzeWorkingTree", "title": "CodeLoom: Analyze Working Tree", "icon": "$(git-pull-request)" },
+      { "command": "codeloom.analyzeFromDiffFile", "title": "CodeLoom: Analyze a Diff File" },
+      { "command": "codeloom.executePlan", "title": "CodeLoom: Execute Current Plan", "icon": "$(play)" },
+      { "command": "codeloom.dryRun", "title": "CodeLoom: Dry Run", "icon": "$(beaker)" }
+    ],
+    "viewsContainers": {
+      "activitybar": [{ "id": "codeloom", "title": "CodeLoom", "icon": "$(git-merge)" }]
+    },
+    "views": {
+      "codeloom": [{ "id": "codeloom.planView", "name": "Commit Plan", "type": "webview" }]
+    },
+    "menus": {
+      "view/title": [
+        { "command": "codeloom.analyzeWorkingTree", "when": "view == codeloom.planView", "group": "navigation" },
+        { "command": "codeloom.executePlan", "when": "view == codeloom.planView", "group": "navigation" },
+        { "command": "codeloom.dryRun", "when": "view == codeloom.planView", "group": "navigation" }
+      ]
+    },
+    "configuration": {
+      "title": "CodeLoom",
+      "properties": {
+        "codeloom.manifestPath": { "type": "string", "default": "design/manifest.yaml", "description": "Workspace-relative path to the MBD manifest YAML." },
+        "codeloom.useGlobalCli": { "type": "boolean", "default": false, "description": "Shell out to globally-installed codeloom CLI." },
+        "codeloom.defaultBranch": { "type": "string", "default": "", "description": "Default feature branch name when executing a plan." }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "dependencies": {
+    "codeloom": "file:../codeloom",
+    "simple-git": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  }
+}
