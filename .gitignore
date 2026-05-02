@@ -38,7 +38,6 @@ npm-debug.log*
 .env.local
 
 # Temp / Test fixtures (optional — keep for integration testing)
-test-fixtures/
 
 # VS Code extension specific
 vscode-extension/out/
