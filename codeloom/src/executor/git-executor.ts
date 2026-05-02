@@ -9,6 +9,15 @@ export interface ExecuteOptions {
   allowDirty?: boolean;
   noRollback?: boolean;
   verbose?: boolean;
+  /**
+   * When true, run `git reset HEAD` before applying commits. Used by
+   * --staged mode: the user has already `git add`'d files, and we want
+   * to UN-stage them so the per-commit staging in applyOneCommit() can
+   * stage just the files belonging to each planned commit.
+   *
+   * No-op (silent) if HEAD doesn't yet exist (initial-commit repo).
+   */
+  unstageFirst?: boolean;
 }
 
 export interface ExecutedCommit {
@@ -94,6 +103,17 @@ export class GitExecutor {
       } catch (e) {
         result.error = `Failed to switch to branch ${options.branch}: ${(e as Error).message}`;
         return result;
+      }
+    }
+
+    // --staged path: unstage everything so that the per-commit staging below
+    // controls exactly what goes into each commit. The working-tree contents
+    // are unchanged by `git reset` (mixed mode).
+    if (options.unstageFirst && startSha) {
+      try {
+        await this.git.reset(['HEAD']);
+      } catch (e) {
+        if (this.verbose) this.log(`unstageFirst skipped: ${(e as Error).message}`);
       }
     }
 
