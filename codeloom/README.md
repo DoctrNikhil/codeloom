@@ -21,7 +21,30 @@ CodeLoom takes a unified diff (typically from AI code generation in Cursor / Cop
 - **Unit + integration tests** — 38 tests including real-git-repo executor and staged-mode verification
 - **VS Code extension** — sidebar webview with commit plan visualization (commands: Analyze, Dry Run, Execute)
 
-## Usage
+## VS Code Extension
+
+**CodeLoom is available as a VS Code extension!**
+
+Install from VS Code Marketplace: [CodeLoom](https://marketplace.visualstudio.com/items?itemName=codeloom.codeloom-vscode)
+
+### Features
+- Analyze diffs in VS Code sidebar
+- Interactive commit plan visualization
+- One-click execution to create real commits
+- MBD manifest integration for requirement tracing
+- Dry-run mode for safe preview
+- Full git integration with trailers
+
+### Quick Start (VS Code)
+1. Install extension from marketplace
+2. Open a git repository
+3. Click CodeLoom icon in Activity Bar
+4. Click "Analyze Working Tree"
+5. Review commit plan and click "Execute"
+
+See [vscode-extension/README.md](./vscode-extension/README.md) for full documentation.
+
+## Usage (CLI)
 
 ```bash
 # Build + link globally (one-time)
