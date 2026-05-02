@@ -16,8 +16,9 @@ CodeLoom takes a unified diff (typically from AI code generation in Cursor / Cop
 - **Requirement mapper** — links each hunk to the requirements it implements
 - **Commit planner** — clusters hunks into atomic commits with traceability tags
 - **Git executor** — stages + commits via simple-git, with `Traces-To` trailers, branch switching, dry-run, rollback
+- **Staged-mode** — `--staged` flag reads `git diff --cached` and turns your `git add`'d changes into atomic commits
 - **CLI** — `codeloom analyze`, `codeloom execute`, and `codeloom trace` commands (globally linked)
-- **Unit + integration tests** — 32 tests including real-git-repo executor verification
+- **Unit + integration tests** — 38 tests including real-git-repo executor and staged-mode verification
 - **VS Code extension** — sidebar webview with commit plan visualization (commands: Analyze, Dry Run, Execute)
 
 ## Usage
@@ -25,25 +26,65 @@ CodeLoom takes a unified diff (typically from AI code generation in Cursor / Cop
 ```bash
 # Build + link globally (one-time)
 npm install && npm run build && npm link
+```
 
-# Analyze a diff (no MBD)
+### Three input modes
+
+CodeLoom can read changes from three sources. Pick whichever fits your workflow:
+
+```bash
+# 1) From a saved diff file
 codeloom analyze path/to/changes.diff
 
-# Analyze with MBD traceability
-codeloom analyze path/to/changes.diff --manifest design/manifest.yaml
+# 2) From stdin (pipe `git diff` directly)
+git diff HEAD~1 | codeloom analyze --stdin
 
-# EXECUTE: apply the plan as real git commits (V0.2)
-codeloom execute path/to/changes.diff --manifest design/manifest.yaml --branch codeloom/feature
-codeloom execute path/to/changes.diff --manifest design/manifest.yaml --dry-run    # preview only
+# 3) From your currently staged changes (NEW in V0.2 — most ergonomic)
+git add src/auth/ src/types/      # stage what you want
+codeloom analyze --staged          # reads `git diff --cached`
+```
 
-# Read diff from stdin
-git diff HEAD~1 | codeloom analyze --stdin --manifest design/manifest.yaml
+### Analyze (plan only)
+
+```bash
+# With MBD traceability
+codeloom analyze --staged --manifest design/manifest.yaml
 
 # JSON output (for piping into other tools)
-codeloom analyze changes.diff --json
+codeloom analyze --staged --json
 
-# Show traceability matrix only
+# Different repo
+codeloom analyze --staged -C /path/to/other/repo
+```
+
+### Execute (create real commits)
+
+```bash
+# Most ergonomic flow: stage → review → commit
+git add .
+codeloom execute --staged --dry-run                                 # preview only
+codeloom execute --staged --branch codeloom/feature                 # commit on a new branch
+codeloom execute --staged --manifest design/manifest.yaml           # with MBD trailers
+
+# From a diff file (e.g. an AI-generated patch you haven't applied yet)
+codeloom execute path/to/changes.diff --manifest design/manifest.yaml --branch codeloom/feature
+```
+
+When `--staged` is used with `execute`, CodeLoom:
+1. Reads `git diff --cached`
+2. Plans atomic commits
+3. **Unstages everything** (`git reset HEAD` — working tree is unchanged)
+4. Stages and commits each planned commit's files in turn
+5. Leaves you with a clean tree and N atomic commits in `git log`
+
+### Trace (requirements coverage)
+
+```bash
+# From a diff file
 codeloom trace --diff changes.diff --manifest design/manifest.yaml
+
+# Or from staged changes
+codeloom trace --staged --manifest design/manifest.yaml
 ```
 
 ## Quick demo
@@ -86,7 +127,26 @@ This runs the analyzer on `examples/sample.diff` (a fake auth service implementa
 
 The pipeline is **deterministic by design**. The same diff and manifest will always produce the same commit plan. No LLM calls required for correctness.
 
-**V0.2 adds real git execution:** `GitExecutor` stages the hunk files, creates commits with `Traces-To` + `CodeLoom-Plan-Id` trailers, supports `--branch` (feature branch creation), `--dry-run` (preview), `--allow-dirty`, and hard-rollback on failure.
+**V0.2 adds real git execution:** `GitExecutor` stages the hunk files, creates commits with `Traces-To` + `CodeLoom-Plan-Id` trailers, supports `--branch` (feature branch creation), `--dry-run` (preview), `--allow-dirty`, `--staged` (turns staged changes into atomic commits), and hard-rollback on failure.
+
+### Commit message trailers
+
+Every commit produced by CodeLoom embeds these trailers (machine-readable):
+
+```
+<title produced by the planner>
+
+Files changed (N):
+  - path/one
+  - path/two
+
+Traces-To: REQ-001, REQ-002      # only when MBD manifest used
+CodeLoom-Plan-Id: commit_3
+CodeLoom-Risk: critical
+CodeLoom-Intent: security
+```
+
+These let downstream tools (CI, audit, release notes) reason about the change without re-parsing the diff.
 
 ## MBD manifest format
 
