@@ -4,7 +4,8 @@
       "Bash(npm test *)",
       "Bash(codeloom analyze *)",
       "Bash(codeloom execute *)",
-      "Bash(vsce package *)"
+      "Bash(vsce package *)",
+      "Bash(npx jest *)"
     ]
   }
 }
