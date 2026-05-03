@@ -1,24 +1,20 @@
-/** @type {import('jest').Config} */
+/** @type {import('ts-jest').JestConfigWithTsJest} */
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  roots: ['<rootDir>/src'],
-  testMatch: ['**/*.test.ts'],
+  roots: ['<rootDir>/src/test'],
   moduleNameMapper: {
-    // Redirect the real vscode module to our hand-rolled mock
     '^vscode$': '<rootDir>/src/__mocks__/vscode.ts',
-    // Resolve codeloom directly from its source dist (avoids node_modules dependency)
     '^codeloom/(.*)$': '<rootDir>/../codeloom/$1',
   },
   transform: {
     '^.+\\.ts$': ['ts-jest', {
       tsconfig: {
-        strict: false,
-        esModuleInterop: true,
-        module: 'commonjs',
         target: 'ES2020',
+        module: 'commonjs',
+        esModuleInterop: true,
+        strict: true,
         skipLibCheck: true,
-        // Tell TypeScript where to resolve codeloom/* imports
         baseUrl: '.',
         paths: {
           'codeloom/*': ['../codeloom/*'],
@@ -26,6 +22,4 @@ module.exports = {
       },
     }],
   },
-  // Collect coverage from source files only
-  collectCoverageFrom: ['src/**/*.ts', '!src/**/*.test.ts', '!src/__mocks__/**'],
 };
