@@ -4,19 +4,23 @@ import * as fs from 'fs';
 import { simpleGit } from 'simple-git';
 import { Analyzer } from 'codeloom/dist/analyzer/analyzer';
 import { ManifestParser } from 'codeloom/dist/mbd/manifest-parser';
-import { GitExecutor, ExecutionResult } from 'codeloom/dist/executor/git-executor';
-import type { AnalysisResult } from 'codeloom/dist/types';
+import { GitExecutor } from 'codeloom/dist/executor/git-executor';
 import { PlanViewProvider } from './planView';
 
+import type { AnalysisResult } from 'codeloom/dist/types';
+
+// ─── Module state ────────────────────────────────────────────────────────────
+
 let currentPlan: AnalysisResult | null = null;
-/** Track whether the last analysis was of staged changes (affects executor options). */
 let lastDiffMode: 'working' | 'staged' = 'working';
 let viewProvider: PlanViewProvider | null = null;
 let outputChannel: vscode.OutputChannel;
 
+// ─── Activation ──────────────────────────────────────────────────────────────
+
 export function activate(context: vscode.ExtensionContext): void {
-  // Reset session state so re-activation (e.g. in tests) starts clean
-  currentPlan  = null;
+  // Reset so reactivation (e.g. tests) starts clean
+  currentPlan = null;
   lastDiffMode = 'working';
 
   outputChannel = vscode.window.createOutputChannel('CodeLoom');
@@ -24,41 +28,45 @@ export function activate(context: vscode.ExtensionContext): void {
 
   viewProvider = new PlanViewProvider(context.extensionUri);
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider(PlanViewProvider.viewType, viewProvider)
+    vscode.window.registerWebviewViewProvider(
+      PlanViewProvider.viewType,
+      viewProvider,
+    ),
   );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('codeloom.analyzeWorkingTree', () => analyzeWorkingTree()),
-    vscode.commands.registerCommand('codeloom.analyzeStaged',      () => analyzeStaged()),
-    vscode.commands.registerCommand('codeloom.analyzeFromDiffFile',() => analyzeFromDiffFile()),
-    vscode.commands.registerCommand('codeloom.executePlan',        () => executePlan(false)),
-    vscode.commands.registerCommand('codeloom.dryRun',             () => executePlan(true)),
+    vscode.commands.registerCommand('codeloom.analyzeStaged', () => analyzeStaged()),
+    vscode.commands.registerCommand('codeloom.analyzeFromDiffFile', () => analyzeFromDiffFile()),
+    vscode.commands.registerCommand('codeloom.executePlan', () => executePlan(false)),
+    vscode.commands.registerCommand('codeloom.dryRun', () => executePlan(true)),
   );
 }
 
-export function deactivate(): void { outputChannel?.dispose(); }
+export function deactivate(): void {
+  outputChannel?.dispose();
+}
 
-// ─── Analyse working tree ─────────────────────────────────────────────────────
+// ─── Analyze working tree (staged + unstaged vs HEAD) ────────────────────────
 
 async function analyzeWorkingTree(): Promise<void> {
   const root = getWorkspaceRoot();
-  if (!root) { return; }
+  if (!root) return;
 
   viewProvider?.setLoading(true);
   try {
     const git = simpleGit(root);
-    if (!await git.checkIsRepo().catch(() => false)) {
+    if (!(await git.checkIsRepo().catch(() => false))) {
       viewProvider?.setError('Workspace is not a git repository.');
       return;
     }
 
-    // git diff HEAD shows staged + unstaged vs last commit.
-    // Falls back to plain git diff when there are no commits yet.
     let diffText: string;
     try {
       diffText = await git.diff(['HEAD']);
     } catch {
-      diffText = await git.diff();      // initial repo with no HEAD
+      // Fresh repo with no commits yet — fall back to plain diff
+      diffText = await git.diff();
     }
 
     if (!diffText.trim()) {
@@ -70,23 +78,22 @@ async function analyzeWorkingTree(): Promise<void> {
 
     lastDiffMode = 'working';
     await runAnalysis(diffText, root);
-  } catch (e) {
-    const msg = (e as Error).message;
-    outputChannel.appendLine(`[analyzeWorkingTree] ${msg}`);
-    viewProvider?.setError(msg);
+  } catch (e: any) {
+    outputChannel.appendLine(`[analyzeWorkingTree] ${e.message}`);
+    viewProvider?.setError(e.message);
   }
 }
 
-// ─── Analyse staged changes ───────────────────────────────────────────────────
+// ─── Analyze staged changes only ─────────────────────────────────────────────
 
 async function analyzeStaged(): Promise<void> {
   const root = getWorkspaceRoot();
-  if (!root) { return; }
+  if (!root) return;
 
   viewProvider?.setLoading(true);
   try {
     const git = simpleGit(root);
-    if (!await git.checkIsRepo().catch(() => false)) {
+    if (!(await git.checkIsRepo().catch(() => false))) {
       viewProvider?.setError('Workspace is not a git repository.');
       return;
     }
@@ -95,59 +102,58 @@ async function analyzeStaged(): Promise<void> {
     if (!diffText.trim()) {
       viewProvider?.setLoading(false);
       vscode.window.showInformationMessage(
-        'CodeLoom: no staged changes found. Run `git add <files>` first.'
+        'CodeLoom: no staged changes found. Run `git add <files>` first.',
       );
       return;
     }
 
     lastDiffMode = 'staged';
     await runAnalysis(diffText, root);
-  } catch (e) {
-    const msg = (e as Error).message;
-    outputChannel.appendLine(`[analyzeStaged] ${msg}`);
-    viewProvider?.setError(msg);
+  } catch (e: any) {
+    outputChannel.appendLine(`[analyzeStaged] ${e.message}`);
+    viewProvider?.setError(e.message);
   }
 }
 
-// ─── Analyse a .diff / .patch file ───────────────────────────────────────────
+// ─── Analyze from a .diff / .patch file ──────────────────────────────────────
 
 async function analyzeFromDiffFile(): Promise<void> {
   const root = getWorkspaceRoot();
-  if (!root) { return; }
+  if (!root) return;
 
   const picked = await vscode.window.showOpenDialog({
     canSelectMany: false,
     openLabel: 'Analyze',
     filters: { Diffs: ['diff', 'patch', 'txt'] },
   });
-  if (!picked || picked.length === 0) { return; }
+  if (!picked || picked.length === 0) return;
 
   viewProvider?.setLoading(true);
   try {
     const diffText = fs.readFileSync(picked[0].fsPath, 'utf-8');
     lastDiffMode = 'working';
     await runAnalysis(diffText, root);
-  } catch (e) {
-    const msg = (e as Error).message;
-    outputChannel.appendLine(`[analyzeFromDiffFile] ${msg}`);
-    viewProvider?.setError(msg);
+  } catch (e: any) {
+    outputChannel.appendLine(`[analyzeFromDiffFile] ${e.message}`);
+    viewProvider?.setError(e.message);
   }
 }
 
-// ─── Core analysis ────────────────────────────────────────────────────────────
+// ─── Core analysis pipeline ──────────────────────────────────────────────────
 
 async function runAnalysis(diffText: string, repoRoot: string): Promise<void> {
   const config = vscode.workspace.getConfiguration('codeloom');
   const manifestRelPath = config.get<string>('manifestPath') || 'design/manifest.yaml';
-  const opts: Parameters<InstanceType<typeof Analyzer>['analyze']>[1] = {};
 
+  const opts: { manifest?: any } = {};
   const absManifest = path.join(repoRoot, manifestRelPath);
+
   if (fs.existsSync(absManifest)) {
     try {
       opts.manifest = new ManifestParser().loadFromFile(absManifest);
       outputChannel.appendLine(`Loaded manifest: ${absManifest}`);
-    } catch (e) {
-      outputChannel.appendLine(`Warning: could not load manifest: ${(e as Error).message}`);
+    } catch (e: any) {
+      outputChannel.appendLine(`Warning: could not load manifest: ${e.message}`);
     }
   }
 
@@ -155,15 +161,15 @@ async function runAnalysis(diffText: string, repoRoot: string): Promise<void> {
   currentPlan = analysis;
   viewProvider?.setPlan(analysis);
   outputChannel.appendLine(
-    `Analysis complete: ${analysis.summary.totalHunks} hunks → ${analysis.summary.totalCommits} commits`
+    `Analysis complete: ${analysis.summary.totalHunks} hunks -> ${analysis.summary.totalCommits} commits`,
   );
 }
 
-// ─── Execute / Dry-run ────────────────────────────────────────────────────────
+// ─── Execute / dry-run ───────────────────────────────────────────────────────
 
 async function executePlan(dryRun: boolean): Promise<void> {
   const root = getWorkspaceRoot();
-  if (!root) { return; }
+  if (!root) return;
 
   if (!currentPlan) {
     vscode.window.showWarningMessage('CodeLoom: run "Analyze" first to generate a commit plan.');
@@ -176,15 +182,16 @@ async function executePlan(dryRun: boolean): Promise<void> {
 
   if (!dryRun) {
     const choice = await vscode.window.showWarningMessage(
-      `CodeLoom will create ${n} real commit${n === 1 ? '' : 's'}${branch ? ` on branch "${branch}"` : ''}. Continue?`,
-      { modal: true }, 'Execute'
+      `CodeLoom will create ${n} commit${n === 1 ? '' : 's'}${branch ? ` on branch "${branch}"` : ''}. Continue?`,
+      { modal: true },
+      'Execute',
     );
-    if (choice !== 'Execute') { return; }
+    if (choice !== 'Execute') return;
   }
 
   viewProvider?.setLoading(true);
   try {
-    const result: ExecutionResult = await new GitExecutor({ cwd: root }).execute(currentPlan, {
+    const result = await new GitExecutor({ cwd: root }).execute(currentPlan, {
       dryRun,
       branch,
       allowDirty: true,
@@ -194,9 +201,7 @@ async function executePlan(dryRun: boolean): Promise<void> {
     outputChannel.show(true);
     outputChannel.appendLine(`\n=== ${dryRun ? 'DRY RUN' : 'EXECUTE'} ===`);
     for (const c of result.commits) {
-      outputChannel.appendLine(
-        `  ${result.dryRun ? '(dry-run)' : c.sha.slice(0, 7)}  ${c.title}`
-      );
+      outputChannel.appendLine(`  ${result.dryRun ? '(dry-run)' : c.sha.slice(0, 7)}  ${c.title}`);
     }
 
     viewProvider?.setLoading(false);
@@ -206,8 +211,8 @@ async function executePlan(dryRun: boolean): Promise<void> {
         ? `Dry-run: ${result.commits.length} commit${result.commits.length === 1 ? '' : 's'} planned.`
         : `Created ${result.commits.length} commit${result.commits.length === 1 ? '' : 's'}.`;
       vscode.window.showInformationMessage(`CodeLoom: ${msg}`);
+
       if (!dryRun) {
-        // Clear plan after a real execute so UI shows clean state
         currentPlan = null;
         viewProvider?.setPlan(null);
       }
@@ -216,15 +221,14 @@ async function executePlan(dryRun: boolean): Promise<void> {
       viewProvider?.setError(err);
       vscode.window.showErrorMessage(`CodeLoom: ${err}`);
     }
-  } catch (e) {
-    const msg = (e as Error).message;
-    outputChannel.appendLine(`[executePlan] ${msg}`);
-    viewProvider?.setError(msg);
+  } catch (e: any) {
+    outputChannel.appendLine(`[executePlan] ${e.message}`);
+    viewProvider?.setError(e.message);
     viewProvider?.setLoading(false);
   }
 }
 
-// ─── Utilities ────────────────────────────────────────────────────────────────
+// ─── Utility ─────────────────────────────────────────────────────────────────
 
 function getWorkspaceRoot(): string | undefined {
   const folders = vscode.workspace.workspaceFolders;
