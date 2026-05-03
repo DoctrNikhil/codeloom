@@ -1,47 +1,42 @@
 /**
- * Hand-rolled VS Code API mock for Jest.
- * Only the surface area used by extension.ts and planView.ts is implemented.
+ * Minimal VS Code API mock for Jest tests.
+ * Provides the subset of vscode.* that extension.ts and planView.ts use.
  */
 
-const outputChannelMock = {
-  appendLine: jest.fn(),
-  show:       jest.fn(),
-  dispose:    jest.fn(),
+const commands = {
+  registerCommand: jest.fn(),
+  executeCommand: jest.fn(),
 };
 
 const window = {
-  createOutputChannel:    jest.fn(() => outputChannelMock),
-  showWarningMessage:     jest.fn().mockResolvedValue(undefined),
-  showInformationMessage: jest.fn().mockResolvedValue(undefined),
-  showErrorMessage:       jest.fn().mockResolvedValue(undefined),
-  showOpenDialog:         jest.fn().mockResolvedValue(undefined),
+  createOutputChannel: jest.fn(() => ({
+    appendLine: jest.fn(),
+    show: jest.fn(),
+    dispose: jest.fn(),
+  })),
   registerWebviewViewProvider: jest.fn(),
-};
-
-const commands = {
-  registerCommand: jest.fn((_id: string, handler: () => void) => ({ dispose: jest.fn() })),
-  executeCommand:  jest.fn().mockResolvedValue(undefined),
+  showInformationMessage: jest.fn(),
+  showWarningMessage: jest.fn(),
+  showErrorMessage: jest.fn(),
+  showOpenDialog: jest.fn(),
 };
 
 const workspace = {
-  workspaceFolders: [{ uri: { fsPath: '/test/repo' } }],
+  workspaceFolders: [{ uri: { fsPath: '/mock/workspace' } }],
   getConfiguration: jest.fn(() => ({
     get: jest.fn((key: string) => {
-      if (key === 'manifestPath')  { return 'design/manifest.yaml'; }
-      if (key === 'defaultBranch') { return ''; }
-      if (key === 'useGlobalCli')  { return false; }
+      if (key === 'manifestPath') return 'design/manifest.yaml';
+      if (key === 'defaultBranch') return '';
       return undefined;
     }),
   })),
 };
 
-const Uri = {
-  file: jest.fn((p: string) => ({ fsPath: p, toString: () => `file://${p}` })),
-};
+class Uri {
+  static file(p: string) { return { fsPath: p, scheme: 'file' }; }
+  static joinPath(base: any, ...segments: string[]) {
+    return { fsPath: [base.fsPath, ...segments].join('/') };
+  }
+}
 
-// ── exports ────────────────────────────────────────────────────────────────────
-export { window, commands, workspace, Uri };
-export default { window, commands, workspace, Uri };
-
-// Named re-exports expected by the extension
-export const __outputChannelMock = outputChannelMock;
+export { commands, window, workspace, Uri };
