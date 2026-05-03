@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { AnalysisResult } from 'codeloom/dist/types';
 
-// ─── Serialisable subset (Maps can't cross postMessage) ───────────────────────
+// ─── Serialisable types (Maps can't cross postMessage) ───────────────────────
 
 export interface SerializableCommit {
   id: string;
@@ -24,8 +24,9 @@ export interface SerializablePlan {
   };
 }
 
+/** Convert an AnalysisResult into a plain-object form safe for postMessage. */
 export function serializePlan(plan: AnalysisResult | null): SerializablePlan | null {
-  if (!plan) { return null; }
+  if (!plan) return null;
   return {
     commits: plan.commits.map(c => ({
       id: c.id,
@@ -46,10 +47,11 @@ export function serializePlan(plan: AnalysisResult | null): SerializablePlan | n
   };
 }
 
-// ─── Provider ─────────────────────────────────────────────────────────────────
+// ─── Webview provider ────────────────────────────────────────────────────────
 
 export class PlanViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'codeloom.planView';
+
   private view?: vscode.WebviewView;
   private latest: AnalysisResult | null = null;
 
@@ -60,9 +62,10 @@ export class PlanViewProvider implements vscode.WebviewViewProvider {
     view.webview.options = { enableScripts: true };
     view.webview.html = this.getHtml(view.webview);
 
-    // Deliver any plan that arrived before the webview opened
-    setTimeout(() => this._postPlan(this.latest), 50);
+    // Deliver any plan that arrived before the webview was visible
+    setTimeout(() => this.postPlan(this.latest), 50);
 
+    // Route button clicks from webview → VS Code commands
     view.webview.onDidReceiveMessage(msg => {
       switch (msg?.command) {
         case 'analyze':       vscode.commands.executeCommand('codeloom.analyzeWorkingTree'); break;
@@ -72,47 +75,47 @@ export class PlanViewProvider implements vscode.WebviewViewProvider {
       }
     });
 
-    // Re-send plan when tab becomes visible again
+    // Re-send plan when the tab becomes visible again
     view.onDidChangeVisibility(() => {
-      if (view.visible) { this._postPlan(this.latest); }
+      if (view.visible) this.postPlan(this.latest);
     });
   }
 
   setPlan(plan: AnalysisResult | null): void {
     this.latest = plan;
-    this._postPlan(plan);
+    this.postPlan(plan);
   }
 
-  setLoading(loading: boolean): void {
-    this.view?.webview.postMessage({ type: 'loading', loading });
+  setLoading(on: boolean): void {
+    this.view?.webview.postMessage({ type: 'loading', loading: on });
   }
 
   setError(message: string): void {
     this.view?.webview.postMessage({ type: 'error', message });
   }
 
-  private _postPlan(plan: AnalysisResult | null): void {
+  private postPlan(plan: AnalysisResult | null): void {
     this.view?.webview.postMessage({ type: 'update', plan: serializePlan(plan) });
   }
 
-  /** Separated so unit tests can call it without a real Webview object. */
+  /** Exposed so tests can call it without a real Webview. */
   getHtml(_webview: vscode.Webview): string {
     return buildHtml(getNonce());
   }
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+// ─── HTML builder ────────────────────────────────────────────────────────────
 
 function getNonce(): string {
   const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
   let n = '';
-  for (let i = 0; i < 32; i++) { n += chars[Math.floor(Math.random() * chars.length)]; }
+  for (let i = 0; i < 32; i++) n += chars[Math.floor(Math.random() * chars.length)];
   return n;
 }
 
-/** Pure function — exported so tests can assert on the HTML content. */
+/** Pure function — exported so tests can verify the HTML. */
 export function buildHtml(nonce: string): string {
-  return /* html */`<!DOCTYPE html>
+  return /* html */ `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -124,7 +127,6 @@ export function buildHtml(nonce: string): string {
     body{font-family:var(--vscode-font-family);font-size:var(--vscode-font-size);
          color:var(--vscode-foreground);padding:8px;line-height:1.4}
 
-    /* ── buttons ── */
     .actions{display:flex;gap:6px;padding:6px 0 10px;flex-wrap:wrap}
     button{background:var(--vscode-button-background);color:var(--vscode-button-foreground);
            border:none;padding:5px 10px;cursor:pointer;border-radius:2px;font-size:12px;white-space:nowrap}
@@ -134,32 +136,27 @@ export function buildHtml(nonce: string): string {
                color:var(--vscode-button-secondaryForeground,#ccc)}
     button.sec:hover{background:var(--vscode-button-secondaryHoverBackground,#45494e)}
 
-    /* ── status bar ── */
     #status{font-size:11px;min-height:18px;color:var(--vscode-descriptionForeground);margin-bottom:4px}
     .spin{display:inline-block;width:11px;height:11px;border:2px solid var(--vscode-descriptionForeground);
           border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;
           vertical-align:middle;margin-right:5px}
     @keyframes spin{to{transform:rotate(360deg)}}
 
-    /* ── states ── */
     .empty{color:var(--vscode-descriptionForeground);padding:24px 4px;text-align:center}
     .empty b{color:var(--vscode-foreground)}
     .err{background:var(--vscode-inputValidation-errorBackground,rgba(255,0,0,.1));
          border:1px solid var(--vscode-inputValidation-errorBorder,#be1100);
          padding:8px 10px;border-radius:2px;font-size:12px;margin:6px 0}
 
-    /* ── summary grid ── */
     .sec-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;
                color:var(--vscode-descriptionForeground);margin:12px 0 5px}
     .grid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
     .card{background:var(--vscode-editorWidget-background,var(--vscode-editor-background));
-          padding:8px 10px;border-radius:3px;
-          border:1px solid var(--vscode-widget-border,transparent)}
+          padding:8px 10px;border-radius:3px;border:1px solid var(--vscode-widget-border,transparent)}
     .card .lbl{font-size:10px;text-transform:uppercase;letter-spacing:.4px;
                color:var(--vscode-descriptionForeground);margin-bottom:2px}
     .card .val{font-size:20px;font-weight:700;line-height:1}
 
-    /* ── commit cards ── */
     .commit{border-left:3px solid var(--vscode-textBlockQuote-border);padding:7px 10px;
             margin:5px 0;background:var(--vscode-editorWidget-background,var(--vscode-editor-background));
             border-radius:0 3px 3px 0}
@@ -180,10 +177,10 @@ export function buildHtml(nonce: string): string {
 </head>
 <body>
   <div class="actions">
-    <button id="b-analyze"  onclick="send('analyze')">Analyze</button>
-    <button id="b-staged"   onclick="send('analyzeStaged')" class="sec">Analyze Staged</button>
-    <button id="b-dryrun"   onclick="send('dryRun')"        class="sec">Dry Run</button>
-    <button id="b-execute"  onclick="send('execute')">Execute</button>
+    <button id="btn-analyze">Analyze</button>
+    <button id="btn-staged" class="sec">Analyze Staged</button>
+    <button id="btn-dryrun" class="sec">Dry Run</button>
+    <button id="btn-execute">Execute</button>
   </div>
   <div id="status"></div>
   <div id="content">
@@ -194,76 +191,93 @@ export function buildHtml(nonce: string): string {
   <script nonce="${nonce}">
     const vscode = acquireVsCodeApi();
 
-    function send(cmd){ vscode.postMessage({command:cmd}); }
+    /* ── Wire buttons via addEventListener (CSP blocks inline onclick) ── */
+    document.getElementById('btn-analyze').addEventListener('click', () => {
+      vscode.postMessage({ command: 'analyze' });
+    });
+    document.getElementById('btn-staged').addEventListener('click', () => {
+      vscode.postMessage({ command: 'analyzeStaged' });
+    });
+    document.getElementById('btn-dryrun').addEventListener('click', () => {
+      vscode.postMessage({ command: 'dryRun' });
+    });
+    document.getElementById('btn-execute').addEventListener('click', () => {
+      vscode.postMessage({ command: 'execute' });
+    });
 
-    function esc(s){
-      return String(s)
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    /* ── Helpers ── */
+    function esc(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;')
+                      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    function setLoading(on){
+    const btnIds = ['btn-analyze','btn-staged','btn-dryrun','btn-execute'];
+
+    function setLoading(on) {
       document.getElementById('status').innerHTML =
         on ? '<span class="spin"></span>Analyzing…' : '';
-      ['b-analyze','b-staged','b-dryrun','b-execute'].forEach(id=>{
-        const el=document.getElementById(id);
-        if(el) el.disabled=on;
+      btnIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.disabled = on;
       });
     }
 
-    function showError(msg){
-      document.getElementById('status').innerHTML='';
-      document.getElementById('content').innerHTML=
-        '<div class="err">&#9888; '+esc(msg)+'</div>'+
+    function showError(msg) {
+      document.getElementById('status').innerHTML = '';
+      document.getElementById('content').innerHTML =
+        '<div class="err">&#9888; ' + esc(msg) + '</div>' +
         '<div class="empty" style="padding-top:8px">Fix the issue, then click <b>Analyze</b>.</div>';
     }
 
-    function renderPlan(plan){
-      const el=document.getElementById('content');
-      if(!plan){
-        el.innerHTML='<div class="empty">Click <b>Analyze</b> to inspect working-tree changes,<br>'+
-          'or <b>Analyze Staged</b> for <code>git add</code>\'d files.</div>';
+    function renderPlan(plan) {
+      const el = document.getElementById('content');
+      if (!plan) {
+        el.innerHTML = '<div class="empty">Click <b>Analyze</b> to inspect working-tree changes,<br>' +
+          'or <b>Analyze Staged</b> for <code>git add</code>\\\'d files.</div>';
         return;
       }
-      const r=plan.summary.riskDistribution;
-      const cov=plan.summary.requirementsCovered;
-      const tot=plan.summary.requirementsTotal;
 
-      let h='<div class="sec-title">Summary</div><div class="grid">';
-      h+='<div class="card"><div class="lbl">Hunks</div><div class="val">'+plan.summary.totalHunks+'</div></div>';
-      h+='<div class="card"><div class="lbl">Commits</div><div class="val">'+plan.summary.totalCommits+'</div></div>';
-      h+='<div class="card"><div class="lbl">Risk</div><div class="val" style="font-size:13px">'+
-         '<span style="color:#f14c4c">'+r.critical+'c</span> '+
-         '<span style="color:#e9a700">'+r.medium+'m</span> '+
-         '<span style="color:#4ec9b0">'+r.low+'l</span></div></div>';
-      h+='<div class="card"><div class="lbl">Coverage</div><div class="val" style="font-size:16px">'+
-         (tot>0?cov+'/'+tot:'—')+'</div></div>';
-      h+='</div>';
+      const r = plan.summary.riskDistribution;
+      const cov = plan.summary.requirementsCovered;
+      const tot = plan.summary.requirementsTotal;
 
-      const sorted=plan.commits.slice().sort((a,b)=>a.order-b.order);
-      h+='<div class="sec-title">Planned Commits ('+sorted.length+')</div>';
-      for(const c of sorted){
-        const cls=c.risk==='critical'?'crit':c.risk==='medium'?'med':'low';
-        const files=[...new Set(c.hunks.map(x=>x.filePath))];
-        const traces=c.tracesTo.map(t=>'<span class="badge">'+esc(t)+'</span>').join(' ');
-        h+='<div class="commit '+cls+'">';
-        h+='<div class="ctitle">#'+(c.order+1)+' &middot; '+esc(c.title)+'</div>';
-        h+='<div class="cmeta">'+
-           '<span class="badge '+cls+'">'+esc(c.risk)+'</span>'+
-           '<span class="badge">'+esc(c.intent)+'</span>'+
-           '<span>'+c.hunks.length+' hunk'+(c.hunks.length===1?'':'s')+'</span>'+
-           (traces?'<span>'+traces+'</span>':'')+'</div>';
-        h+='<div class="files">'+files.map(esc).join(' &middot; ')+'</div>';
-        h+='</div>';
+      let h = '<div class="sec-title">Summary</div><div class="grid">';
+      h += '<div class="card"><div class="lbl">Hunks</div><div class="val">' + plan.summary.totalHunks + '</div></div>';
+      h += '<div class="card"><div class="lbl">Commits</div><div class="val">' + plan.summary.totalCommits + '</div></div>';
+      h += '<div class="card"><div class="lbl">Risk</div><div class="val" style="font-size:13px">' +
+           '<span style="color:#f14c4c">' + r.critical + 'c</span> ' +
+           '<span style="color:#e9a700">' + r.medium + 'm</span> ' +
+           '<span style="color:#4ec9b0">' + r.low + 'l</span></div></div>';
+      h += '<div class="card"><div class="lbl">Coverage</div><div class="val" style="font-size:16px">' +
+           (tot > 0 ? cov + '/' + tot : '—') + '</div></div>';
+      h += '</div>';
+
+      const sorted = plan.commits.slice().sort((a, b) => a.order - b.order);
+      h += '<div class="sec-title">Planned Commits (' + sorted.length + ')</div>';
+
+      for (const c of sorted) {
+        const cls = c.risk === 'critical' ? 'crit' : c.risk === 'medium' ? 'med' : 'low';
+        const files = [...new Set(c.hunks.map(x => x.filePath))];
+        const traces = c.tracesTo.map(t => '<span class="badge">' + esc(t) + '</span>').join(' ');
+        h += '<div class="commit ' + cls + '">';
+        h += '<div class="ctitle">#' + (c.order + 1) + ' &middot; ' + esc(c.title) + '</div>';
+        h += '<div class="cmeta">' +
+             '<span class="badge ' + cls + '">' + esc(c.risk) + '</span>' +
+             '<span class="badge">' + esc(c.intent) + '</span>' +
+             '<span>' + c.hunks.length + ' hunk' + (c.hunks.length === 1 ? '' : 's') + '</span>' +
+             (traces ? '<span>' + traces + '</span>' : '') + '</div>';
+        h += '<div class="files">' + files.map(esc).join(' &middot; ') + '</div>';
+        h += '</div>';
       }
-      el.innerHTML=h;
+      el.innerHTML = h;
     }
 
-    window.addEventListener('message', ev=>{
-      const msg=ev.data;
-      if     (msg.type==='update' ){ setLoading(false); renderPlan(msg.plan); }
-      else if(msg.type==='loading'){ setLoading(msg.loading); }
-      else if(msg.type==='error'  ){ setLoading(false); showError(msg.message); }
+    /* ── Listen for messages from the extension host ── */
+    window.addEventListener('message', ev => {
+      const msg = ev.data;
+      if      (msg.type === 'update')  { setLoading(false); renderPlan(msg.plan); }
+      else if (msg.type === 'loading') { setLoading(msg.loading); }
+      else if (msg.type === 'error')   { setLoading(false); showError(msg.message); }
     });
   </script>
 </body>
