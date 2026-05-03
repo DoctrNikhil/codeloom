@@ -3,7 +3,7 @@
   "displayName": "CodeLoom",
   "description": "Turn AI-generated diffs into atomic, traceable, MBD-aligned git commits",
   "version": "0.2.0",
-  "publisher": "codeloom",
+  "publisher": "DoctrNikhil",
   "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
@@ -23,10 +23,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/codeloom/codeloom"
+    "url": "https://github.com/DoctrNikhil/codeloom"
   },
   "bugs": {
-    "url": "https://github.com/codeloom/codeloom/issues"
+    "url": "https://github.com/DoctrNikhil/codeloom/issues"
   },
   "main": "./out/extension.js",
   "activationEvents": [
@@ -50,7 +50,7 @@
       },
       {
         "command": "codeloom.executePlan",
-        "title": "CodeLoom: Execute Current Plan",
+        "title": "CodeLoom: Execute Plan",
         "icon": "$(play)"
       },
       {
@@ -82,22 +82,22 @@
         {
           "command": "codeloom.analyzeWorkingTree",
           "when": "view == codeloom.planView",
-          "group": "navigation"
+          "group": "navigation@1"
         },
         {
           "command": "codeloom.analyzeStaged",
           "when": "view == codeloom.planView",
-          "group": "navigation"
+          "group": "navigation@2"
         },
         {
           "command": "codeloom.dryRun",
           "when": "view == codeloom.planView",
-          "group": "navigation"
+          "group": "navigation@3"
         },
         {
           "command": "codeloom.executePlan",
           "when": "view == codeloom.planView",
-          "group": "navigation"
+          "group": "navigation@4"
         }
       ]
     },
@@ -109,15 +109,10 @@
           "default": "design/manifest.yaml",
           "description": "Workspace-relative path to the MBD manifest YAML."
         },
-        "codeloom.useGlobalCli": {
-          "type": "boolean",
-          "default": false,
-          "description": "Shell out to globally-installed codeloom CLI."
-        },
         "codeloom.defaultBranch": {
           "type": "string",
           "default": "",
-          "description": "Default feature branch name when executing a plan."
+          "description": "Feature branch name for plan execution (empty = current branch)."
         }
       }
     }
@@ -126,10 +121,10 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test": "jest --forceExit",
-    "test:watch": "jest --watch"
+    "test": "jest --forceExit"
   },
   "dependencies": {
+    "js-yaml": "^4.1.0",
     "simple-git": "^3.22.0"
   },
   "devDependencies": {
@@ -137,7 +132,7 @@
     "@types/node": "^20.10.0",
     "@types/vscode": "^1.85.0",
     "jest": "^29.7.0",
-    "ts-jest": "^29.4.9",
+    "ts-jest": "^29.4.0",
     "typescript": "^5.3.3"
   }
 }
