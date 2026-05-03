@@ -1,0 +1,143 @@
+diff --git a/src/auth.ts b/src/auth.ts
+new file mode 100644
+index 0000000..abc1234
+--- /dev/null
++++ b/src/auth.ts
+@@ -0,0 +1,25 @@
++import bcrypt from 'bcrypt';
++import jwt from 'jsonwebtoken';
++
++export interface User {
++  id: string;
++  email: string;
++  passwordHash: string;
++}
++
++export async function hashPassword(password: string): Promise<string> {
++  const salt = await bcrypt.genSalt(10);
++  return bcrypt.hash(password, salt);
++}
++
++export async function verifyPassword(password: string, hash: string): Promise<boolean> {
++  return bcrypt.compare(password, hash);
++}
++
++export function generateToken(userId: string): string {
++  return jwt.sign(
++    { userId },
++    process.env.JWT_SECRET || 'secret',
++    { expiresIn: '24h' }
++  );
++}
+diff --git a/src/middleware.ts b/src/middleware.ts
+new file mode 100644
+index 0000000..def5678
+--- /dev/null
++++ b/src/middleware.ts
+@@ -0,0 +1,20 @@
++import { Request, Response, NextFunction } from 'express';
++import jwt from 'jsonwebtoken';
++
++export interface AuthRequest extends Request {
++  userId?: string;
++}
++
++export function authMiddleware(req: AuthRequest, res: Response, next: NextFunction): void {
++  const token = req.headers.authorization?.split(' ')[1];
++
++  if (!token) {
++    res.status(401).json({ error: 'Unauthorized' });
++    return;
++  }
++
++  try {
++    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'secret') as { userId: string };
++    req.userId = decoded.userId;
++    next();
++  } catch (e) {
+diff --git a/src/routes/login.ts b/src/routes/login.ts
+new file mode 100644
+index 0000000..ghi9012
+--- /dev/null
++++ b/src/routes/login.ts
+@@ -0,0 +1,30 @@
++import { Router, Request, Response } from 'express';
++import { verifyPassword, generateToken } from '../auth';
++import { User } from '../auth';
++
++const router = Router();
++
++router.post('/login', async (req: Request, res: Response) => {
++  const { email, password } = req.body;
++
++  if (!email || !password) {
++    res.status(400).json({ error: 'Missing email or password' });
++    return;
++  }
++
++  // Mock user lookup (in production, query database)
++  const user: User = {
++    id: '123',
++    email,
++    passwordHash: '$2b$10$...' // bcrypt hash
++  };
++
++  const isValid = await verifyPassword(password, user.passwordHash);
++  if (!isValid) {
++    res.status(401).json({ error: 'Invalid credentials' });
++    return;
++  }
++
++  const token = generateToken(user.id);
++  res.json({ token });
++});
+diff --git a/README.md b/README.md
+new file mode 100644
+index 0000000..jkl3456
+--- /dev/null
++++ b/README.md
+@@ -0,0 +1,20 @@
++# Auth Service
++
++A simple authentication service with password hashing and JWT tokens.
++
++## Features
++
++- Secure password hashing with bcrypt
++- JWT-based authentication
++- Express middleware for protected routes
++- User login endpoint
++
++## Setup
++
++```bash
++npm install
++npm run start
++```
++
++## API
++
++POST /login - Login with email and password
+diff --git a/package.json b/package.json
+index 0000000..abc1234 100644
+--- a/package.json
++++ b/package.json
+@@ -1,5 +1,5 @@
+ {
+-  "name": "app",
++  "name": "auth-service",
+   "version": "1.0.0",
+   "description": "Authentication service",
+   "main": "src/index.ts",
+@@ -8,7 +8,9 @@
+     "express": "^4.18.0",
+     "bcrypt": "^5.1.0",
+     "jsonwebtoken": "^9.0.0",
++    "dotenv": "^16.0.0",
+     "typescript": "^5.0.0",
+     "ts-node": "^10.0.0"
+   },
++  "scripts": {
++    "start": "ts-node src/index.ts"
++  }
+ }
