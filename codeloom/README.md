@@ -25,7 +25,7 @@ CodeLoom takes a unified diff (typically from AI code generation in Cursor / Cop
 
 **CodeLoom is available as a VS Code extension!**
 
-Install from VS Code Marketplace: [CodeLoom](https://marketplace.visualstudio.com/items?itemName=codeloom.codeloom-vscode)
+Install from VS Code Marketplace: [CodeLoom](https://marketplace.visualstudio.com/items?itemName=DoctrNikhil.codeloom-vscode)
 
 ### Features
 - Analyze diffs in VS Code sidebar
